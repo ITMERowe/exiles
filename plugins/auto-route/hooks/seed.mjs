@@ -1,5 +1,5 @@
 // Copies seed/agents/Explore.md into ~/.claude on session start, only when missing, so a fresh install gets it
-// and later edits are never overwritten. Rules do not live in a copied CLAUDE.md: the plugins inject them (adhd.mjs, hideout).
+// and later edits are never overwritten. Rules do not live in a copied CLAUDE.md: the plugins inject them (register.ts, hideout).
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'

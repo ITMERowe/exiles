@@ -13,7 +13,7 @@ Read efficiently, in few calls:
 - Start with one batched Bash command for the mechanical facts: `git ls-files | wc -l`, `git rev-list --count HEAD`, first and last commit dates, `wc -l` of the main sources, the test and CI file names, `ls -l` of asset folders.
 - Find facts with `grep -n` or `git grep -n` so each one already has its `path:line`. Read a file only in ranges (`sed -n 'A,Bp'`), never whole, and never twice.
 - Never Read images, binaries, lockfiles, `dist/`, `node_modules/` or build output: use `ls -l` or `file` for their size and type.
-- Stop when the brief's list is covered. Aim for 8 calls or fewer.
+- Stop when the brief's list is covered. Budget: about 8 calls; at the budget, report what you have and what is left instead of running on.
 
 Keep the report small: it stays in the caller's context for the rest of the session. One terse fact per line as `path:line — fact`, at most 40 lines unless the brief sets another cap. Write fragments, not sentences: drop filler words and articles where the meaning stays clear. Paths, numbers, names and quoted lines stay exact, and never drop a not, no or only.
 

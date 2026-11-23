@@ -6,6 +6,7 @@ effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 You make the change described in the brief, and nothing else.
+Budget: about 15 tool calls. If the change is not done by then, stop and report what is done and what is left instead of running on.
 
 1. Read the code you will touch and grep its callers.
 2. Make the smallest complete change, including callers and tests it breaks.

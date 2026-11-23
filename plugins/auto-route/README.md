@@ -34,10 +34,11 @@ After a reload nothing switches until the main session makes one request, becaus
 
 ## What it does at session start
 
-Two hooks in `hooks/seed.json` run each time a session starts:
+One hook in `hooks/seed.json` runs each time a session starts:
 
-- **Seed.** `hooks/seed.mjs` copies `seed/agents/Explore.md` into `~/.claude`, but only when it is missing; later edits are never overwritten. Rules are not copied into a `CLAUDE.md`: `hooks/adhd.mjs` injects `rules/adhd.md` and `rules/workflow.md` (skills and voice, answer ownership, repo hygiene) every session, so every machine gets the same behavior. If your own `CLAUDE.md` repeats those sections, delete them to avoid paying for them twice.
-- **ADHD rules.** `hooks/adhd.mjs` adds `rules/adhd.md` to the session: the answer or next action first, numbered steps for real multi-step work, one next action at the end, and terse wording (short sentences, no filler, code and errors exact). Say "stop adhd mode" to turn it off for the session.
+- **Seed.** `hooks/seed.mjs` copies `seed/agents/Explore.md` into `~/.claude`, but only when it is missing; later edits are never overwritten.
+- **House rules.** Built in: `hooks/house.ts` holds them and `hooks/register.ts` adds them to the main session's system prompt (subagents do not get them). They are short on purpose: the answer or next action first, numbered steps for real multi-step work, repo hygiene, changelog and handoff, one automated check per feature. Voice stays with the caveman plugin and code style with ponytail, so nothing is said twice. Say "stop adhd mode" to turn the shape off. If your own `CLAUDE.md` repeats these, delete the copy.
+- **Done-check.** The house rules tell Claude to run `hooks/done-check.mjs` once in the project root before a build's final message. It exits 1 with one line per miss: no `HANDOFF.md` or README, a site URL or base path hard-coded in a framework config instead of read from the environment, or a placeholder image.
 
 ## Install
 

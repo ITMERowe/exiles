@@ -1,4 +1,6 @@
 import type { Register } from 'claude-code'
+import { fileURLToPath } from 'node:url'
+import { houseRules } from './house.ts'
 
 // The whole routing model: the table and rules go into the main session's system prompt, and each
 // typed prompt gets a note naming the row it matches and the skills that fit it.
@@ -23,7 +25,7 @@ export const ROUTES: Route[] = [
 export const RULES = `## Routing (auto-route)
 Standing request from the user: use the subagents below whenever a task matches a row; do not wait to be told.
 
-Delegate only when it saves context or money, or needs a stronger model. A subagent starts cold, so a job that reads or returns under ~20k tokens (a few files or commands, looped or not) stays here, except a survey of two or more repos, which always goes to subagents. If an advisor is configured (\`advisorModel\`), ask it before hard work and before declaring done, not an Opus subagent.
+Delegate by read size. A subagent starts cold, so only work large to read and small to report goes out: search, docs, long build or test output, and a survey of two or more repos, which always goes to subagents. Under ~20k tokens of reading stays here. Writing code, a build and steps that depend on each other stay here too: spawn no helper for them. With an advisor configured (\`advisorModel\`), ask it before hard work and before declaring done, not an Opus subagent.
 
 | Work | Agent | Model |
 |---|---|---|
@@ -31,9 +33,8 @@ ${ROUTES.map(r => `| ${r.work} | \`${r.agent}\` | ${r.model} |`).join('\n')}
 | Anything else | main session | session model |
 
 - Independent jobs: one message, in parallel. Dependent jobs: one at a time.
-- Search first, then edit: give \`${A('editor')}\` the paths and lines \`${A('searcher')}\` found.
-- Brief each subagent with goal, file paths, done condition. Pass a plan step's exact text as the Agent \`description\`.
-- Failed twice or unfamiliar code: escalate one tier. Never retry the same agent a third time.
+- Brief each subagent with goal, file paths, done condition and a call budget (about 10 calls, then report what is left). Pass a plan step's exact text as the Agent \`description\`; give \`${A('editor')}\` the paths and lines \`${A('searcher')}\` found.
+- Failed twice or unfamiliar code: escalate one tier, never a third try on the same agent.
 - Route only to these agents. Ordinary diffs: main session or \`/code-review\`; \`${A('reviewer')}\` is for the risky row.
 - Never switch \`/model\` mid-task (loses the cache).
 - An \`auto-route:\` prompt note comes from a keyword table: follow it when it fits, overrule it when this table says otherwise.`
@@ -41,7 +42,7 @@ ${ROUTES.map(r => `| ${r.work} | \`${r.agent}\` | ${r.model} |`).join('\n')}
 // The standing part in the system prompt: a session that never delegates pays for these few lines, not the table.
 // The full RULES ride along once, with the first note that names a routing row.
 export const RULES_LITE = `## Routing (auto-route)
-Standing request from the user: use the \`auto-route:*\` subagents when a task matches: searcher, explore, reader (haiku) for finding and reading; editor (sonnet) for bounded edits; verifier (haiku) for running builds and tests, always passing the row's model as the Agent \`model\`; heavy, reviewer (opus) for hard or risky work. Delegate only when it saves context or money, or needs a stronger model; a job under ~20k tokens of reading or output stays here, and bigger reads go to subagents in parallel; a survey of two or more repos always does, whatever its size. The full table comes with the first prompt note that names a row.`
+Standing request from the user: use the \`auto-route:*\` subagents when a task matches, passing the row's model as the Agent \`model\`: searcher, explore, reader, verifier (haiku) to find, read or run long checks; editor (sonnet) for bounded edits; heavy, reviewer (opus) for hard or risky work. Delegate by read size: work large to read and small to report goes out, in parallel; under ~20k tokens stays here; a survey of two or more repos always goes out. Writing code, a build and dependent steps stay here with no helpers. Give each helper a call budget (about 10 calls). The full table comes with the first prompt note that names a row.`
 
 // A prompt that only asks to read something: a link or a guide, post or doc, and no word that changes code.
 const READ_VERB = /\b(read|summari[sz]e|tl;?dr|skim|explain|what does|what's in|go through|check out|look at)\b/i
@@ -109,8 +110,28 @@ const CLONE = /\b(git\s+clone|gh\s+repo\s+clone)\b|raw\.githubusercontent\.com|(
 export const isSurvey = (text: string): boolean =>
   !asksOnly(text) && routeFor(text)?.agent === A('explore') && SURVEY.test(text) && MANY.test(text)
 
+/** A shell command split at unquoted `;`, `|`, `&`, `&&`, `||` and newlines; quoted text and `2>&1` stay whole. */
+export const splitCommand = (command: string): string[] => {
+  const parts: string[] = []
+  let cur = ''
+  let quote = ''
+  for (let i = 0; i < command.length; i++) {
+    const c = command.charAt(i)
+    if (c === '\\' && quote !== "'") { cur += c + (command[++i] ?? ''); continue }
+    if (quote) { if (c === quote) quote = '' }
+    else if (c === '"' || c === "'") quote = c
+    else if (/[;|\n]/.test(c) || (c === '&' && command[i - 1] !== '>' && command[i + 1] !== '>')) { parts.push(cur); cur = ''; continue }
+    cur += c
+  }
+  return [...parts, cur].map(s => s.trim()).filter(Boolean)
+}
+
+// A command that only prints or searches text runs nothing it names: `grep "git clone" log` reads no repo.
+// shortcut: `echo "git clone x" | sh` slips through; the gate guides a cooperative model, it is no sandbox.
+const TEXT_ONLY = /^(echo|printf|grep|egrep|rg|findstr|select-string|write-(output|host))\b/i
+
 /** True for a Bash command that clones a repo or fetches its files. */
-export const readsRepo = (command: string): boolean => CLONE.test(command)
+export const readsRepo = (command: string): boolean => splitCommand(command).some(c => !TEXT_ONLY.test(c) && CLONE.test(c))
 
 const READ_ONLY_ROWS = new Set([A('searcher'), A('explore'), A('reader')])
 
@@ -186,7 +207,13 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
     if (!e.tools.includes('Agent')) return r
-    return { sections: [...r.sections.filter(s => s.id !== 'auto-route:routing'), { id: 'auto-route:routing', text: RULES_LITE, scope: 'session' }] }
+    return {
+      sections: [
+        ...r.sections.filter(s => s.id !== 'auto-route:routing' && s.id !== 'auto-route:house'),
+        { id: 'auto-route:routing', text: RULES_LITE, scope: 'session' },
+        { id: 'auto-route:house', text: houseRules(fileURLToPath(new URL('./done-check.mjs', import.meta.url)).replaceAll('\\', '/')), scope: 'session' },
+      ],
+    }
   })
   on('prompt.submit', ($, e, next) => {
     // Slash commands and prompts the person did not type carry their own instructions.
