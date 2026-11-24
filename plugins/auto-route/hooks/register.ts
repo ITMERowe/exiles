@@ -13,13 +13,13 @@ const A = (name: string) => `auto-route:${name}`
 // Checked top to bottom; the first row whose test matches a prompt is the one its note names.
 export const ROUTES: Route[] = [
   { agent: A('fable'), model: 'fable', work: 'Bug that resists ordinary debugging, only when the user asks for Fable', test: /\bfable\b/i },
-  { agent: A('reviewer'), model: 'opus', work: 'Auth, permissions, payments, migrations, deletion, concurrency, security boundary diff', test: /\b(auth|login|password|permissions?|payments?|billing|migrations?|deletion|concurren\w*|race condition|deadlock|security|secrets?|tokens? (leak|storage)|oauth|jwt|encrypt\w*|sql injection|xss|csrf|rbac|(delete|wipe|purge) (the )?(users?|accounts?|data|database))\b/i },
+  { agent: A('reviewer'), model: 'opus', work: 'Auth, permissions, payments, migrations, deletion, concurrency, security boundary diff', test: /\b(review|audit|assess|pen-?test)\b.{0,60}\b(auth|login|password|permissions?|payments?|billing|migrations?|deletion|concurren\w*|race condition|deadlock|security|secrets?|tokens? (leak|storage)|oauth|jwt|encrypt\w*|sql injection|xss|csrf|rbac)\b|\b(auth|login|password|permissions?|payments?|billing|migrations?|deletion|concurren\w*|race condition|deadlock|security|secrets?|tokens? (leak|storage)|oauth|jwt|encrypt\w*|sql injection|xss|csrf|rbac)\b.{0,60}\b(review|audit)\b/i },
   { agent: A('heavy'), model: 'opus', work: 'Messy code, root-cause debugging, multi-file change with invariants', test: /\b(root cause|why does .{0,40}(fail|break|crash)|flaky|intermittent|keeps (failing|breaking|happening)|still (broken|shows|fails)|messy|legacy|across (the )?(codebase|files|modules)|memory leak|performance regression|hard to reproduce|heisenbug)\b/i },
   { agent: A('reader'), model: 'haiku', work: 'Read a guide, post, doc page or link and report what it says' },
   { agent: A('searcher'), model: 'haiku', work: 'Locate code, "where is X", "what calls Y", map a folder', test: /\b(where (is|are|'s)|what calls|who calls|which file|find (the )?(definition|usages?|uses|callers)|list (all )?(the )?uses|locate|find all|grep for|which files?|how many (files|places|times)|list (all )?(the )?files)\b/i },
   { agent: A('explore'), model: 'haiku', work: 'Broad sweep across many files, conclusion only', test: /\b(map (the|this|our) (repo|codebase|project)|overview of (the|this) (code|repo|codebase)|how does .{0,40} work|sweep|everywhere (we|it|that)|read through (the )?(repo|code|codebase|project)|get (to know|familiar with) (the )?(repo|code|codebase|project)|trace (the )?(flow|path|call)|compare (the |these |those )?(repos|projects|codebases))\b|github\.com\/[\w-]+|\b(inspect|analy[sz]e|survey|examine|investigate)\b.{0,50}\b(repos?|repositor(y|ies)|profile|codebase)\b/i },
   { agent: A('verifier'), model: 'haiku', work: 'Run a long build, lint, typecheck or test suite and report pass or fail with the error lines', test: /\b(run|rerun|re-run) (the |all |our )?(unit |e2e |integration )?(tests?|test suite|build|lint(ing)?|type-?check(ing)?|checks?)\b|\bverify (the |that )?(build|tests?)\b/i },
-  { agent: A('editor'), model: 'sonnet', work: 'Bounded edit with clear spec: rename, known-cause bug, boilerplate, tests', test: /\b(rename|typo|boilerplate|bump (the )?version|add (a |the )?tests?|write tests?|swap .{0,30} for|update (the )?(readme|docs|comments?|changelog)|fix (the )?(lint|formatting|imports?)|convert .{0,30} to|scaffold|add (a |the )?(field|prop|param(eter)?|import|route|page|component))\b/i },
+  { agent: A('editor'), model: 'sonnet', work: 'Bounded edit with clear spec: rename, known-cause bug, boilerplate, tests' },
 ]
 
 export const RULES = `## Routing (auto-route)
@@ -83,23 +83,27 @@ export const skillsFor = (text: string): string[] => SKILLS.filter(([re]) => re.
 // and one that asks about work rather than asking for it, so it gets no agent note.
 const QUESTION_START = /^\s*(what|which|who|why|how|when|where|is|are|does|do|did|can|could|should|would|will|explain)\b/i
 const NOT_PLAIN = /```|https?:\/\/|[\w.-]+[\\/][\w.-]+|\.\w{1,5}\b(?=\s|$|[,:;)])/
-export const isQuestion = (text: string): boolean =>
-  text.length <= 400 && (QUESTION_START.test(text) || /\?\s*$/.test(text)) && !NOT_PLAIN.test(text)
+// "Can you add tests?" is a polite order, not a question.
+const REQUEST = /^\s*(can|could|would|will)\s+you\b/i
+const asksOnly = (text: string): boolean => text.length <= 400 && !REQUEST.test(text) && (QUESTION_START.test(text) || /\?\s*$/.test(text))
+export const isQuestion = (text: string): boolean => asksOnly(text) && !NOT_PLAIN.test(text)
+
+const FAMILY = ['haiku', 'sonnet']
+const rank = (model: string): number => { const i = FAMILY.findIndex(f => model.includes(f)); return i < 0 ? FAMILY.length : i }
 
 /** The model a question's turn runs on, by its label and the context it carries; undefined keeps the session's. */
-export const modelFor = (label: string | undefined, context: number, limits: { haiku: number; sonnet: number }): string | undefined => {
-  // context 0 is unknown (no main request seen since a reload): switching blind could write a large cache.
-  if (context <= 0) return undefined
-  if (label === 'chat' && context < limits.haiku) return 'claude-haiku-5-5'
-  if (label === 'tech-question' && context < limits.sonnet) return 'claude-sonnet-5-5'
-  return undefined
+export const modelFor = (label: string | undefined, context: number, limits: { haiku: number; sonnet: number }, session?: string): string | undefined => {
+  // context 0 or no session model is unknown (no main request seen since a reload): switching blind could write a large cache.
+  if (context <= 0 || !session) return undefined
+  const target = label === 'chat' && context < limits.haiku ? 'claude-haiku-5-5' : label === 'tech-question' && context < limits.sonnet ? 'claude-sonnet-5-5' : undefined
+  // Only ever to a cheaper family: a Haiku session is never upgraded, a Sonnet one never "switched" to Sonnet.
+  return target && rank(target) < rank(session) ? target : undefined
 }
 
 // A survey of repos or a profile, as opposed to a targeted question about one codebase: only a survey gets the recon checklist.
 const SURVEY = /github\.com\/[\w-]+|\b(inspect|analy[sz]e|survey|examine|investigate)\b.{0,50}\b(repos?|repositor(y|ies)|profile|codebase)\b/i
 
 // A short question, even one that names a URL (isQuestion treats a path-like word as code): it asks about work, it does not order a survey.
-const asksOnly = (text: string): boolean => text.length <= 400 && (QUESTION_START.test(text) || /\?\s*$/.test(text))
 
 // A survey of a whole profile or several repos (not one named repo): the main session must not read these itself.
 const MANY = /\b(repos|repositories|profile)\b|github\.com\/[\w-]+\/?(?=[\s)\].,"']|$)/i
@@ -108,7 +112,7 @@ const CLONE = /\b(git\s+clone|gh\s+repo\s+clone)\b|raw\.githubusercontent\.com|(
 
 /** True when a prompt asks for a survey of several repos, and so gates the main session's own reading. */
 export const isSurvey = (text: string): boolean =>
-  !asksOnly(text) && routeFor(text)?.agent === A('explore') && SURVEY.test(text) && MANY.test(text)
+  !asksOnly(text) && !!ROUTES.find(r => r.agent === A('explore'))?.test?.test(text) && SURVEY.test(text) && MANY.test(text)
 
 /** A shell command split at unquoted `;`, `|`, `&`, `&&`, `||` and newlines; quoted text and `2>&1` stay whole. */
 export const splitCommand = (command: string): string[] => {
@@ -133,6 +137,21 @@ const TEXT_ONLY = /^(echo|printf|grep|egrep|rg|findstr|select-string|write-(outp
 /** True for a Bash command that clones a repo or fetches its files. */
 export const readsRepo = (command: string): boolean => splitCommand(command).some(c => !TEXT_ONLY.test(c) && CLONE.test(c))
 
+// Git moves the house rules forbid unless the user asked. A secret never goes through; the rest is refused once per exact command,
+// so the model must stop and either ask or, when the user already asked, rerun it.
+const GIT_RISK: [RegExp, string, boolean][] = [
+  [/\bgit\s+add\b.*(\.env\b|\.(pem|key|p12)\b|credentials|id_rsa)/i, 'staging a secret file: never commit secrets', true],
+  [/\bgit\s+add\b.*(\s-A\b|\s--all\b|\s\.(\s|$))/, 'git add -A or .: stage files by name', false],
+  [/\bgit\s+push\b.*(\s-f\b|--force(?!-))/, 'force-push: use --force-with-lease, and only when asked', false],
+  [/\bgit\s+(rm\b|branch\s+-D\b|rebase\b|commit\b.*--amend)/, 'rewriting history or deleting files or branches', false],
+]
+
+/** The house rule a git command breaks, with whether it is absolute; undefined for a clean command. */
+export const gitRisk = (command: string): { why: string; absolute: boolean } | undefined => {
+  for (const c of splitCommand(command).filter(c => !TEXT_ONLY.test(c)))
+    for (const [re, why, absolute] of GIT_RISK) if (re.test(c)) return { why, absolute }
+}
+
 const READ_ONLY_ROWS = new Set([A('searcher'), A('explore'), A('reader')])
 
 /** The routing note for one prompt, or undefined when nothing fits. */
@@ -145,7 +164,7 @@ export const routeNote = (text: string, hinted: Set<string> = new Set()): string
   if (r?.agent === A('reader'))
     lines.push('auto-route: this ask only reads a guide, post or link. Hand the reading to the `auto-route:reader` subagent (haiku) with the link or path and what to pull out, then relay its summary. Read it yourself only if it is one short local file.')
   else if (r)
-    lines.push(`auto-route: this ask matches the \`${r.agent}\` row (${r.model}): ${r.work}. ${survey ? '' : ' Delegate that part only if it needs over ~20k tokens of reading.'}${survey ? ' For this survey, delegate the reading: clone the repos in one command, then in your next message spawn up to 3 `auto-route:explore` agents with model "haiku" (group small repos) and read no repo file yourself first. Per repo, gather: purpose; stack with versions; structure with wc -l of the main files; tests (framework, file count); CI; docs; commit count and date range (git rev-list --count, git log); notable decisions with file:line; known limits or hygiene problems; asset paths and sizes. Only a single small repo (under ~50 source files) may be read by you; every agent goes in the same message, briefed with this list, "facts as path:line plus quote, no opinions" and a cap of 40 lines per repo, one fact per line (their reports stay in your context for every later call). Every claim you publish carries a file:line or a command count: count, never estimate. While subagents run, keep working on what does not need their results (set up the project, install, write code that does not depend on them); do not end the turn to wait. Before you finish, recheck about five published numbers against the source in one batched command and fix any mismatch. When the build is done, run lint, type, test and build yourself in one batched command; hand them to `auto-route:verifier` only for a long suite (over ~3k tokens of output), and never poll with sleep. You still read each failure and fix it, and you do not claim done on the word of a subagent without its exit lines.' : ''}`)
+    lines.push(`auto-route: this ask matches the \`${r.agent}\` row (${r.model}): ${r.work}.${survey ? '' : ' Delegate that part only if it needs over ~20k tokens of reading.'}${survey ? ' For this survey, delegate the reading: clone the repos in one command, then in your next message spawn up to 3 `auto-route:explore` agents with model "haiku" (group small repos) and read no repo file yourself first. Per repo, gather: purpose; stack with versions; structure with wc -l of the main files; tests (framework, file count); CI; docs; commit count and date range (git rev-list --count, git log); notable decisions with file:line; known limits or hygiene problems; asset paths and sizes. Only a single small repo (under ~50 source files) may be read by you; every agent goes in the same message, briefed with this list, "facts as path:line plus quote, no opinions" and a cap of 40 lines per repo, one fact per line (their reports stay in your context for every later call). Every claim you publish carries a file:line or a command count: count, never estimate. While subagents run, keep working on what does not need their results (set up the project, install, write code that does not depend on them); do not end the turn to wait. Before you finish, recheck about five published numbers against the source in one batched command and fix any mismatch. When the build is done, run lint, type, test and build yourself in one batched command; hand them to `auto-route:verifier` only for a long suite (over ~3k tokens of output), and never poll with sleep. You still read each failure and fix it, and you do not claim done on the word of a subagent without its exit lines.' : ''}`)
   // Each skill is hinted once per session, and a plain question gets none: a repeat only adds context tokens.
   if (r && !hinted.has('rules')) {
     hinted.add('rules')
@@ -162,7 +181,7 @@ export const routeNote = (text: string, hinted: Set<string> = new Set()): string
 const LABELS = ['chat', 'tech-question', 'task']
 
 export const register: Register = (on, options) => {
-  const limits = { haiku: Number(options.haikuUpTo ?? 100000), sonnet: Number(options.sonnetUpTo ?? 50000) }
+  const limits = { haiku: Number(options.haikuUpTo ?? 0), sonnet: Number(options.sonnetUpTo ?? 50000) }
   const hinted = new Set<string>()
   // A survey the model answered by cloning and reading every repo itself ran in V3 and V6 despite the note, so the note is enforced:
   // until an explore agent has been spawned, the main session's clone or raw-file fetch is refused. It gives way after 2 refusals.
@@ -172,17 +191,19 @@ export const register: Register = (on, options) => {
   // each question's turn was moved to. Module state: a reload clears it, and nothing switches until
   // the next main request reports its size.
   let context = 0
+  let session = ''
   const moved = new Map<string, string>()
 
   on('turn.start', async ($, e, next) => {
     if (!e.agentId && isQuestion(e.text) && (limits.haiku > 0 || limits.sonnet > 0)) {
       const label = await $.model.classify(e.text, LABELS).catch(() => undefined)
-      const model = modelFor(label, context, limits)
+      const model = modelFor(label, context, limits, session)
       if (model) moved.set(e.turnId, model)
     }
     return next(e)
   })
   on('turn.step', async function* ($, e, next) {
+    if (!e.agentId && !moved.has(e.turnId)) session = e.model
     const model = e.agentId ? undefined : moved.get(e.turnId)
     const result = yield* next(model ? { ...e, model } : e)
     const u = result.usage
@@ -211,7 +232,9 @@ export const register: Register = (on, options) => {
       sections: [
         ...r.sections.filter(s => s.id !== 'auto-route:routing' && s.id !== 'auto-route:house'),
         { id: 'auto-route:routing', text: RULES_LITE, scope: 'session' },
-        { id: 'auto-route:house', text: houseRules(fileURLToPath(new URL('./done-check.mjs', import.meta.url)).replaceAll('\\', '/')), scope: 'session' },
+        ...(options.houseRules === 'on'
+          ? [{ id: 'auto-route:house', text: houseRules(fileURLToPath(new URL('./done-check.mjs', import.meta.url)).replaceAll('\\', '/')), scope: 'session' as const }]
+          : []),
       ],
     }
   })
@@ -225,10 +248,21 @@ export const register: Register = (on, options) => {
   })
   // Subagent calls carry an agentId; the main session's do not.
   const DENY = 'auto-route: this is a survey of several repos. Spawn up to 3 `auto-route:explore` agents now, in one message, with model "haiku" and the repo URLs (group small repos); they clone and read, you do not. Then continue with work that does not need their reports.'
-  on('tool.call', { tool: 'Bash' }, ($, e, next) => {
-    if (!gated || e.agentId || !readsRepo(e.command) || ++refused > 2) return next(e)
-    return { deny: DENY }
-  })
+  for (const tool of ['Bash', 'PowerShell'])
+    on('tool.call', { tool }, ($, e, next) => {
+      if (!gated || e.agentId || !readsRepo(e.command) || ++refused > 2) return next(e)
+      return { deny: DENY }
+    })
+  // The git hygiene rules are enforced here rather than asked for in the prompt, so they hold with the house rules on.
+  const warned = new Set<string>()
+  if (options.houseRules === 'on')
+    for (const tool of ['Bash', 'PowerShell'])
+      on('tool.call', { tool }, ($, e, next) => {
+        const risk = gitRisk(e.command)
+        if (!risk || (!risk.absolute && warned.has(e.command))) return next(e)
+        warned.add(e.command)
+        return { deny: `auto-route: ${risk.why}.${risk.absolute ? '' : ' Run it only if the user asked; if they did, run the same command again.'}` }
+      })
   on('tool.call', { tool: 'WebFetch' }, ($, e, next) => {
     if (!gated || e.agentId || !readsRepo(String(e.url)) || ++refused > 2) return next(e)
     return { deny: DENY }

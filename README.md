@@ -49,7 +49,6 @@ Every session gets a routing table, and every prompt gets a hidden note naming t
 |---|---|
 | "where is the login handler?" | `searcher` · Haiku |
 | "summarize this post" | `reader` · Haiku |
-| "rename these 40 files" | `editor` · Sonnet |
 | "review the payment migration" | `reviewer` · Opus |
 | "find the root cause of the flaky build" | `heavy` · Opus |
 

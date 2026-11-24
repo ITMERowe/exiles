@@ -26,12 +26,11 @@ const problems = text => {
 const root = join(import.meta.dirname, '..')
 const files = [
   ...readdirSync(join(root, 'agents')).filter(f => f.endsWith('.md')).map(f => join(root, 'agents', f)),
-  join(root, 'seed', 'agents', 'Explore.md'),
 ]
 const ending = (text, eol) => text.replace(/\r?\n/g, eol)
 
 test('every agent file frontmatter parses with LF and with CRLF line endings', () => {
-  assert.equal(files.length, 9)
+  assert.equal(files.length, 8)
   for (const f of files)
     for (const eol of ['\n', '\r\n']) assert.deepEqual(problems(ending(readFileSync(f, 'utf8'), eol)), [], `${f} (${eol === '\n' ? 'LF' : 'CRLF'})`)
 })

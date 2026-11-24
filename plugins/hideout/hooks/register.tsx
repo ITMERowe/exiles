@@ -36,15 +36,6 @@ const cleanWindows = (list: readonly UsageWindow[]): UsageWindow[] =>
     .map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt }))
     .sort((a, b) => (WINDOW_ORDER[a.kind] ?? 9) - (WINDOW_ORDER[b.kind] ?? 9))
 
-// Background subagents with no model of their own run on a cheap one. Types that pin their
-// own model (searcher, reader, editor, reviewer, savvy-*) and forks keep theirs. auto-route:* is skipped here because auto-route's own agent.spawn hook sets its model.
-const PINNED = new Set(['searcher', 'reader', 'editor', 'reviewer'])
-function routeModel<T extends { background: boolean; fork: boolean; model?: string; subagentType: string; parentModel: string }>(e: T): T {
-  if (!e.background || e.fork || e.model || PINNED.has(e.subagentType) || /^(savvy-|auto-route:)/.test(e.subagentType)) return e
-  if (/haiku/i.test(e.parentModel)) return e
-  return { ...e, model: e.subagentType === 'Explore' ? 'haiku' : 'sonnet' }
-}
-
 const TOOL = 'mcp__hideout__progress'
 const STEP_TOOL = 'mcp__hideout__step'
 // Added to the end of each savvy worker's brief. Their system prompt words step
@@ -54,8 +45,6 @@ const STEP_BRIEF = `
 
 Progress reporting: before any other work, call \`${STEP_TOOL}\` with \`total\` (your plan in 3-8 steps) and \`done: 0\`; call it again with \`done\` and a few-word \`note\` as each step finishes. It only draws a progress bar.`
 const PANE = 'hideout-agents'
-export const HOUSE_RULES = `## Progress
-- For multi-step work, report through the mcp__hideout__progress tool when it is available (title, phase, tasks, done): update it as each step finishes and set finished at the end. Run long jobs as background tasks or subagents so they show in the agents panel.`
 
 // shortcut: a desktop row is the code font's line height, about 20 px measured; read it from the surface if one ever reports it.
 export const ROW_PX = 20
@@ -1474,6 +1463,7 @@ export const workOf = (tool: string, e: Record<string, unknown>): [WorkKind, str
     case 'Write':
       return ['edit', tail(str(e.file_path))]
     case 'Bash':
+    case 'PowerShell':
       return ['cli', str(e.description) || str(e.command)]
     case 'Grep':
     case 'Glob':
@@ -1651,8 +1641,6 @@ export const register: Register = (on, options) => {
         await update($, now, () => at)
       })()
     })
-    // Always on: the panel opens with every session.
-    void $.ui.open({ id: PANE, title: tr().pane })
     return started
   })
 
@@ -1660,6 +1648,13 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const r = await next(e)
     await recordWork($, 'Bash', e)
+    const id = (r as { result?: { backgroundTaskId?: string } }).result?.backgroundTaskId
+    if (id) await track($, id, 'shell', String(e.description || e.command || 'shell'))
+    return r
+  })
+  on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
+    const r = await next(e)
+    await recordWork($, 'PowerShell', e)
     const id = (r as { result?: { backgroundTaskId?: string } }).result?.backgroundTaskId
     if (id) await track($, id, 'shell', String(e.description || e.command || 'shell'))
     return r
@@ -1754,14 +1749,6 @@ export const register: Register = (on, options) => {
     if (id) await track($, id, 'monitor', String(e.description || 'monitor'), lasts)
     return r
   })
-  // House rules for code changes, in the main session's system prompt: a cached session section, so it costs
-  // its tokens once per cache window rather than on every prompt. Subagents (no Agent tool) report to the main
-  // session, which explains the diff and writes the handoff once.
-  on('prompt.compose', async ($, e, next) => {
-    const r = await next(e)
-    if (!e.tools.includes('Agent')) return r
-    return { sections: [...r.sections.filter(s => s.id !== 'hideout:rules'), { id: 'hideout:rules', text: HOUSE_RULES, scope: 'session' }] }
-  })
   // A background task's notification names the task and how it ended.
   on('prompt.submit', async ($, e, next) => {
     if (e.origin?.kind === 'task-notification') {
@@ -1838,7 +1825,7 @@ export const register: Register = (on, options) => {
 
   on('agent.spawn', async ($, e, next) => {
     const isUnbriefed = e.subagentType.startsWith('savvy-') && !e.prompt.includes(STEP_TOOL)
-    const started = await next(routeModel(isUnbriefed ? { ...e, prompt: e.prompt + STEP_BRIEF } : e))
+    const started = await next(isUnbriefed ? { ...e, prompt: e.prompt + STEP_BRIEF } : e)
     // Denied, or no agentId to match its steps and end by: no row.
     const agentId = started.agentId
     if (started.deny !== undefined || !agentId) return started

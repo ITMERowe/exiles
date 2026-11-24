@@ -10,9 +10,9 @@ The reader has ADHD. "stop adhd mode" or "normal mode" turns the shape rules off
 
 ## Repo hygiene
 - Commit only what a cloner needs to install, build, test or understand the project. Git-ignore AI tool folders and notes (\`.claude/\`, \`CLAUDE.md\`, \`AGENTS.md\`, \`HANDOFF.md\`), caches, build and test output, dependencies. \`CHANGELOG.md\` is committed.
-- Never commit secrets (\`.env*\`, keys, credentials). If one leaks, revoke it first.
-- Run \`git status\` before editing; leave unrelated changes alone. Stage files by name, never \`git add -A\`. One logical change per commit, message says why. Commit and push only when asked; read \`git diff --staged\` and run tests before a push.
-- Rewrite history, force-push, \`git rm\` or delete branches only when asked.
+- If a secret leaks, revoke it first; rewriting history does not make it safe.
+- Run \`git status\` before editing; leave unrelated changes alone. One logical change per commit, message says why. Commit and push only when asked; read \`git diff --staged\` and run tests before a push.
+- A hook blocks staging secrets and asks you to confirm \`git add -A\`, force-push, \`git rm\`, branch delete, rebase and amend: do those only when asked.
 
 ## Code changes
 - Once per task, add a CHANGELOG.md entry at the repo root (today's date, each changed file and why) and update HANDOFF.md (what changed, what is left). Link the entry in chat.
