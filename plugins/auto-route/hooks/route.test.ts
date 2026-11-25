@@ -243,4 +243,9 @@ test('git moves the house rules forbid are caught; clean ones and quoted text ar
   expect(gitRisk('git add src/a.ts')).toBeUndefined()
   expect(gitRisk('git commit --amend')).toBeDefined()
   expect(gitRisk('echo "git add -A"')).toBeUndefined()
+  expect(gitRisk('git commit -m x
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>')?.absolute).toBe(true)
+  expect(gitRisk('gh pr create --body "🤖 Generated with [Claude Code](https://claude.com/claude-code)"')?.absolute).toBe(true)
+  expect(gitRisk('git commit -m "fix band"')).toBeUndefined()
 })

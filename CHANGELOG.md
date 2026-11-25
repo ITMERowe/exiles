@@ -2,6 +2,9 @@
 
 Code changes, newest first: each file and section, what changed and why.
 
+## 2026-11-25
+### auto-route 0.6.1: no Claude attribution in commits or PRs
+- `plugins/auto-route/hooks/register.ts` (`GIT_RISK`): a command carrying a `Co-Authored-By` line naming Claude or Anthropic, or a "Generated with [Claude Code]" line, is refused outright (with `houseRules: on`, same gate as the other git rules). `hooks/house.ts`: one rule line. `.claude-plugin/plugin.json`: 0.6.1. Why: the trailer makes Claude a contributor on GitHub. Test added to `route.test.ts`, spot-checked with node.
 ## 2026-11-25 (uncommitted)
 ### hideout 3.2.0: band and agents panel always on
 - `plugins/hideout/hooks/register.tsx`: the panel opens with every session again; the band is drawn even before a plan or usage window exists (the early return that hid it is gone; with nothing to show it is the crew button alone) and asks the session for the plan's usage windows when it has none, so the 7D/5H row is there from the start; the `autoOpen` option and its `any` branch are removed. `.claude-plugin/plugin.json`: `userConfig` removed, version 3.2.0. `README.md`: Settings section replaced by "Always on". Why: the band and panel should be there like ponytail's band, not appear only after a plan. Tests: hideout 55 pass; the empty band was not looked at on screen.

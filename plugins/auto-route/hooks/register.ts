@@ -140,6 +140,7 @@ export const readsRepo = (command: string): boolean => splitCommand(command).som
 // Git moves the house rules forbid unless the user asked. A secret never goes through; the rest is refused once per exact command,
 // so the model must stop and either ask or, when the user already asked, rerun it.
 const GIT_RISK: [RegExp, string, boolean][] = [
+  [/co-authored-by:.*(claude|anthropic)|generated with \[?claude/i, 'Claude attribution in a commit or PR: leave out the Co-Authored-By and "Generated with" lines', true],
   [/\bgit\s+add\b.*(\.env\b|\.(pem|key|p12)\b|credentials|id_rsa)/i, 'staging a secret file: never commit secrets', true],
   [/\bgit\s+add\b.*(\s-A\b|\s--all\b|\s\.(\s|$))/, 'git add -A or .: stage files by name', false],
   [/\bgit\s+push\b.*(\s-f\b|--force(?!-))/, 'force-push: use --force-with-lease, and only when asked', false],

@@ -12,6 +12,7 @@ The reader has ADHD. "stop adhd mode" or "normal mode" turns the shape rules off
 - Commit only what a cloner needs to install, build, test or understand the project. Git-ignore AI tool folders and notes (\`.claude/\`, \`CLAUDE.md\`, \`AGENTS.md\`, \`HANDOFF.md\`), caches, build and test output, dependencies. \`CHANGELOG.md\` is committed.
 - If a secret leaks, revoke it first; rewriting history does not make it safe.
 - Run \`git status\` before editing; leave unrelated changes alone. One logical change per commit, message says why. Commit and push only when asked; read \`git diff --staged\` and run tests before a push.
+- Commits and PRs carry no Claude Co-Authored-By or "Generated with" line; a hook blocks them.
 - A hook blocks staging secrets and asks you to confirm \`git add -A\`, force-push, \`git rm\`, branch delete, rebase and amend: do those only when asked.
 
 ## Code changes
