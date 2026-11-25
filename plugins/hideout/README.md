@@ -30,19 +30,9 @@ Your crew's hideout in Claude Code. A plugin with two parts: a band above the pr
 
 The cost is an estimate from token counts and a built-in price table (`PRICES` in `hooks/register.tsx`), not a bill. Cache writes are priced at the 1-hour rate, so a session that writes 5-minute cache entries shows a higher cost than it really paid.
 
-## Settings
+## Always on
 
-- `autoOpen`: `workers` (default) or `any`.
-  - `workers`: the panel opens by itself when a plan is reported or a planned worker starts.
-  - `any`: it also opens, once per session, when any other subagent starts.
-
-  `/agents-info` toggles the panel either way.
-
-Set them in `/config`. For a plugin loaded by hand, set them in `~/.claude/settings.json`:
-
-```json
-{ "pluginConfigs": { "hideout": { "options": { "autoOpen": "any" } } } }
-```
+The band above the prompt and the crew panel open with every session; `/agents-info` toggles the panel.
 
 ## Install
 

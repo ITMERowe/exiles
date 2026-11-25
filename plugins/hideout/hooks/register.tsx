@@ -1641,6 +1641,8 @@ export const register: Register = (on, options) => {
         await update($, now, () => at)
       })()
     })
+    // Always on: the panel opens with every session.
+    void $.ui.open({ id: PANE, title: tr().pane })
     return started
   })
 
@@ -1854,8 +1856,6 @@ export const register: Register = (on, options) => {
     if (e.subagentType.startsWith('savvy-')) {
       const f = await read($, flow)
       await autoOpen($, f && !f.isFinished ? f.title : 'savvy-flow')
-    } else if (options.autoOpen === 'any') {
-      await autoOpen($, 'any-agent')
     }
     return started
   })
@@ -2380,15 +2380,14 @@ export const register: Register = (on, options) => {
     const below = drawn && typeof drawn === 'object' && (drawn as { type?: string }).type !== 'engine' ? drawn : null
     const beneath = new Set(next.trace.filter(t => t.outcome !== 'skipped' && t.plugin !== 'engine').map(t => t.plugin))
     const stored = await read($, flow)
-    const ws = await read($, windows)
+    let ws = await read($, windows)
+    // The plan's windows are stored when a request reports them; before the first one, ask the session so the usage row is there from the start.
+    if (!ws.length) {
+      const u = await $.session.usage().catch(() => null)
+      if (u?.rateLimits?.length) ws = await update($, windows, () => cleanWindows(u.rateLimits))
+    }
     // This band stands in for ribbon's and ponytail's rows when they are installed; any other band is kept.
     const isOurs = [...beneath].every(p => p === 'ribbon' || p === 'ponytail')
-    // Nothing to draw yet (no plan, no usage windows read): still hide their rows.
-    if (stored === null && ws.length === 0) {
-      if (beneath.size === 0 || !isOurs) return drawn ?? next(e)
-      const { Box } = $.ui.resolve(e)
-      return <Box />
-    }
     const rest = isOurs ? null : below
 
     const ui = $.ui.resolve(e)
@@ -2416,6 +2415,8 @@ export const register: Register = (on, options) => {
       const inner = width - 16
       const rows = [...(f ? [rowSvg(f, inner, isWorking)] : []), ...(ws.length ? [usageSvg(ws, inner, at)] : [])]
       const alt = [f ? `${f.title}: ${label(f)}, ${percent}` : '', usageAlt].filter(Boolean).join('; ')
+      // No plan and no usage window yet (the plan's windows arrive with the first request): the band is just the crew button, so it is there from the start.
+      if (!rows.length) return <Box flexDirection="column"><Box flexDirection="row">{crewButton}</Box>{rest}</Box>
       return (
         <Box flexDirection="column">
           <Box flexDirection="row" alignItems="center" gap={1}>
@@ -2434,6 +2435,7 @@ export const register: Register = (on, options) => {
     const usageW = Math.max(4, Math.floor((cols - 8) / Math.max(1, ws.length)) - 16)
     return (
       <Box flexDirection="column">
+        {!f && !ws.length && <Box flexDirection="row">{crewButton}</Box>}
         {f && (
           <Box flexDirection="row" gap={2}>
             <Box width={titleW} flexShrink={0}>
