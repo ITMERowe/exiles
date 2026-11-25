@@ -2,6 +2,10 @@
 
 Code changes, newest first: each file and section, what changed and why.
 
+## 2026-11-25 (uncommitted)
+### hideout 3.2.0: band and agents panel always on
+- `plugins/hideout/hooks/register.tsx`: the panel opens with every session again; the band is drawn even before a plan or usage window exists (the early return that hid it is gone; with nothing to show it is the crew button alone) and asks the session for the plan's usage windows when it has none, so the 7D/5H row is there from the start; the `autoOpen` option and its `any` branch are removed. `.claude-plugin/plugin.json`: `userConfig` removed, version 3.2.0. `README.md`: Settings section replaced by "Always on". Why: the band and panel should be there like ponytail's band, not appear only after a plan. Tests: hideout 55 pass; the empty band was not looked at on screen.
+
 ## 2026-11-24 (uncommitted)
 ### auto-route and hideout: advisor fixes
 - `plugins/auto-route/hooks/register.ts`: the survey gate also covers the `PowerShell` tool; "can/could/would/will you ..." is an order, not a question (`REQUEST`); the reviewer row needs a review/audit verb next to a risky noun ("add a login page" no longer goes to a reviewer); the editor row has no keyword test (the table lists it, the read-size rule picks it); `isSurvey` tests the explore row directly; the double space in the row note is gone; `modelFor` takes the session model and only switches to a cheaper family; `haikuUpTo` defaults to 0 (never measured); the house section needs `houseRules: on`. Why: the Windows PowerShell tool bypassed the gate, and the keyword rows contradicted the "writing code stays here" rule.
