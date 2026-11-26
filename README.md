@@ -14,12 +14,39 @@ Two Claude Code plugins that make agent work cheaper and easier to watch. **auto
 
 ## Install
 
-In Claude Code, one line at a time:
+**Everything at once.** `install.ps1` installs Exiles and the plugins listed in [plugins.txt](plugins.txt). It needs git, and Claude Code on your PATH. On Windows, paste this one line into PowerShell. It downloads the repo to your temp folder and runs the installer:
+
+```powershell
+git clone --depth 1 https://github.com/ITMERowe/exiles.git "$env:TEMP\exiles-install"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\exiles-install\install.ps1"
+```
+
+On macOS or Linux, paste this instead:
+
+```sh
+d=$(mktemp -d) && git clone --depth 1 https://github.com/ITMERowe/exiles.git "$d" && sh "$d/install.sh"
+```
+
+When it finishes, run this in Claude Code:
+
+```
+/reload-plugins
+```
+
+**Only Exiles.** In Claude Code, run these one at a time:
 
 ```
 /plugin marketplace add ITMERowe/exiles
+```
+
+```
 /plugin install auto-route@exiles
+```
+
+```
 /plugin install hideout@exiles
+```
+
+```
 /reload-plugins
 ```
 
